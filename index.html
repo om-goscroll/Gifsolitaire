@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Gifsolitaire</title>
+    <link rel="icon" type="image/png" href="/assets/icons/favicon.png" />
+    <style>
+      :root {
+        --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        --green: #2fbf5b;
+        --green-dark: #1f8f41;
+        --orange: #ff9a2e;
+        --orange-dark: #d9741a;
+        --blue: #3f8fe0;
+        --blue-dark: #2a69ad;
+      }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #a8dc8c; font-family: system-ui, sans-serif; }
+      canvas { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: default; }
+      canvas.dragging { cursor: grabbing !important; }
+      button { -webkit-tap-highlight-color: transparent; }
+      button:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 3px; }
+
+      /* Chunky game buttons: lift on hover, squash on press. */
+      .game-button {
+        border: 0; border-radius: 999px; cursor: pointer; color: #fff;
+        transition: transform 0.18s var(--spring), box-shadow 0.18s ease, filter 0.18s ease, opacity 0.25s ease;
+      }
+      @media (hover: hover) {
+        .game-button:hover { filter: brightness(1.08) saturate(1.05); }
+      }
+
+      /* In-game: Next and Hint buttons share the space under the board. */
+      #next, #hint {
+        position: fixed; left: 50%; top: 90%; z-index: 2;
+        transform: translate(-50%, -50%) scale(0.6); opacity: 0; pointer-events: none;
+      }
+      #next {
+        padding: 12px 40px; background: var(--green); font: 800 22px/1 system-ui, sans-serif; letter-spacing: 0.04em;
+        box-shadow: 0 5px 0 var(--green-dark), 0 10px 18px rgba(0, 0, 0, 0.22);
+      }
+      #next.shown { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); animation: nudge 1.6s ease-in-out 0.6s infinite; }
+      @media (hover: hover) {
+        #next.shown:hover { transform: translate(-50%, calc(-50% - 3px)) scale(1.05); box-shadow: 0 8px 0 var(--green-dark), 0 14px 22px rgba(0, 0, 0, 0.24); animation: none; }
+      }
+      #next.shown:active { transform: translate(-50%, calc(-50% + 3px)) scale(0.96); box-shadow: 0 2px 0 var(--green-dark), 0 4px 10px rgba(0, 0, 0, 0.2); animation: none; }
+      #hint {
+        display: flex; align-items: center; gap: 10px; padding: 14px 32px 14px 24px;
+        background: var(--orange); font: 800 22px/1 system-ui, sans-serif; letter-spacing: 0.04em;
+        box-shadow: 0 5px 0 var(--orange-dark), 0 10px 18px rgba(0, 0, 0, 0.2);
+      }
+      #hint .bulb { width: 30px; height: 30px; display: block; object-fit: contain; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2)); }
+      #hint.shown { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+      #hint.shown.waiting { opacity: 0.55; pointer-events: none; }
+      @media (hover: hover) {
+        #hint.shown:hover { transform: translate(-50%, calc(-50% - 3px)) scale(1.06); box-shadow: 0 8px 0 var(--orange-dark), 0 14px 22px rgba(0, 0, 0, 0.22); }
+        #hint.shown:hover .bulb { animation: wiggle 0.5s ease-in-out; }
+      }
+      #hint.shown:active { transform: translate(-50%, calc(-50% + 3px)) scale(0.95); box-shadow: 0 1px 0 var(--orange-dark), 0 3px 8px rgba(0, 0, 0, 0.2); }
+      #hint.pop .bulb { animation: bulb 0.6s var(--spring); }
+
+      /* Level heading above the board: the level's name, its place in the list underneath. */
+      #hud {
+        position: fixed; top: 0; left: 50%; transform: translate(-50%, -50%); z-index: 2;
+        display: flex; flex-direction: column; gap: 7px; align-items: center; white-space: nowrap;
+      }
+      /* Home: top left, mirroring the sound toggle. The map (z-index 5) covers it. */
+      #home {
+        position: fixed; top: 14px; left: 16px; z-index: 3;
+        display: flex; align-items: center; gap: 7px; height: 40px; padding: 0 16px 0 10px;
+        background: var(--blue); font: 800 15px/1 system-ui, sans-serif; letter-spacing: 0.02em;
+        box-shadow: 0 3px 0 var(--blue-dark), 0 4px 10px rgba(0, 0, 0, 0.16);
+      }
+      #home img { width: 24px; height: 24px; object-fit: contain; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25)); }
+      @media (hover: hover) { #home:hover { transform: translateY(-2px); box-shadow: 0 5px 0 var(--blue-dark), 0 6px 12px rgba(0, 0, 0, 0.18); } }
+      #home:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--blue-dark); }
+      #level-name { display: flex; align-items: center; gap: 7px; color: #fff; font: 800 22px/1 system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); }
+      #level-name img { width: 26px; height: 26px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25)); }
+      #level-name img[hidden] { display: none; }
+      #level-count {
+        padding: 4px 11px; border-radius: 999px; background: rgba(255, 255, 255, 0.85); color: #2c7a44;
+        font: 800 12px/1 system-ui, sans-serif; transition: transform 0.3s var(--spring), background 0.3s ease, color 0.3s ease;
+      }
+      #level-count.won { background: var(--green); color: #fff; animation: pop 0.5s var(--spring); }
+
+      /* Mute toggle: top right, above every screen. */
+      #mute {
+        position: fixed; top: 14px; right: 16px; z-index: 8;
+        width: 40px; height: 40px; padding: 0; display: grid; place-items: center;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 3px 0 rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.16);
+      }
+      @media (hover: hover) { #mute:hover { transform: translateY(-2px) scale(1.07); } }
+      #mute:active { transform: scale(0.9); }
+      #mute img { width: 27px; height: 27px; object-fit: contain; pointer-events: none; }
+      #mute.flip { animation: pop 0.35s var(--spring); }
+
+      /* Opening banner */
+      #banner {
+        position: fixed; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 14px; background: rgba(20, 30, 20, 0.45); opacity: 0; pointer-events: none;
+        transition: opacity 0.2s ease;
+      }
+      #banner.shown { opacity: 1; pointer-events: auto; }
+      #banner img { width: 120px; height: 120px; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35)); transform: scale(0.4) rotate(-20deg); transition: transform 0.45s var(--spring) 0.05s; }
+      #banner.shown img { transform: scale(1) rotate(0); }
+      #banner img[hidden] { display: none; }
+      #banner .label {
+        padding: 16px 46px; border-radius: 14px; color: #fff; text-transform: uppercase; text-align: center;
+        font: 800 34px/1.15 system-ui, sans-serif; letter-spacing: 0.05em;
+        box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25), 0 14px 24px rgba(0, 0, 0, 0.3);
+        transform: scale(0.7); transition: transform 0.3s var(--spring);
+      }
+      #banner .label small { display: block; font-size: 15px; letter-spacing: 0.18em; opacity: 0.9; margin-bottom: 4px; }
+      #banner.shown .label { transform: scale(1); }
+      #banner.hard .label { background: #e2473b; }
+      #banner.bonus .label { background: #8e44ec; }
+
+      /* Level map: a full-screen light page, the game logo on top, centred 4-column grid. */
+      #map::-webkit-scrollbar { display: none; }
+      #map {
+        position: fixed; inset: 0; z-index: 5; overflow-y: auto; box-sizing: border-box;
+        /* Scrolls by wheel, touch and keys, with no visible scrollbar. */
+        scrollbar-width: none; -ms-overflow-style: none;
+        padding: 0 0 130px; background: linear-gradient(#fbf8f2, #f0ebe0);
+        opacity: 0; visibility: hidden; transition: opacity 0.25s ease, visibility 0.25s;
+        /* Stop taking clicks the moment it starts hiding, not after the fade. */
+        pointer-events: none;
+      }
+      #map.shown { opacity: 1; visibility: visible; pointer-events: auto; }
+      .map-header {
+        position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 12px;
+        /* Side padding keeps the title clear of the sound button. */
+        padding: 18px 64px 18px; background: linear-gradient(#fbf8f2 80%, rgba(251, 248, 242, 0));
+      }
+      /* The heading carries the width, so the logo centres and never grows past 440px. */
+      .map-logo { margin: 0; line-height: 0; width: min(440px, 100%); }
+      .map-logo img {
+        display: block; width: 100%; height: auto; user-select: none;
+        filter: drop-shadow(0 6px 10px rgba(30, 50, 110, 0.18));
+      }
+      .map-progress { display: flex; align-items: center; gap: 12px; }
+      #map.entering .map-bar.bump { animation: pop 0.6s var(--spring) 0.35s both; }
+      .map-bar { width: min(260px, 70vw); height: 10px; border-radius: 999px; background: #e2dccf; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08); }
+      .map-bar-fill { height: 100%; border-radius: 999px; background: var(--green); transition: width 0.6s var(--spring) 0.3s; }
+      .map-levels {
+        display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(10px, 2.6vw, 18px);
+        max-width: 640px; margin: 2px auto 0; padding: 0 16px;
+      }
+
+      .map-level {
+        position: relative; aspect-ratio: 1; padding: 0; border: 0; border-radius: 16px; overflow: hidden;
+        background: #dfe6e2; cursor: pointer; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18);
+        transition: transform 0.22s var(--spring), box-shadow 0.22s ease;
+      }
+      .map-level.locked { cursor: not-allowed; }
+      .map-level.next { animation: breathe 1.8s ease-in-out infinite; }
+      @media (hover: hover) {
+        .map-level:not(.locked):hover { transform: translateY(-5px) scale(1.05) rotate(-1.2deg); box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24); animation: none; }
+        .map-level:not(.locked):hover .map-picture { transform: scale(1.1); }
+        .map-level.locked:hover { transform: scale(0.98); }
+      }
+      .map-level:not(.locked):active { transform: translateY(1px) scale(0.96); transition-duration: 0.08s; }
+      .map-level.shake { animation: shake 0.42s ease; }
+      .map-picture { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.35s ease; user-select: none; }
+      /* An animated card picture placed to show the level's own square (see setThumbnail). */
+      .map-picture.placed { position: absolute; max-width: none; object-fit: fill; }
+      .map-picture.loading {
+        background: linear-gradient(100deg, #dfe6e2 30%, #f4f8f5 50%, #dfe6e2 70%) 0 0 / 220% 100%;
+        animation: shimmer 1.1s linear infinite;
+      }
+      .map-level.locked .map-picture { filter: grayscale(1) blur(3px) brightness(1.15); opacity: 0.55; }
+      .map-badge { position: absolute; top: 4px; right: 4px; width: 26%; height: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4)); }
+      .map-state {
+        position: absolute; right: 5px; bottom: 5px; width: 30%; height: auto; pointer-events: none; user-select: none;
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+      }
+      .map-level.locked .map-state { width: 38%; right: 50%; bottom: 50%; transform: translate(50%, 50%); }
+      .map-level.just-completed .map-state { animation: check 0.7s var(--spring) 0.45s both; }
+      .map-level.just-unlocked::after {
+        content: ''; position: absolute; inset: 0; pointer-events: none;
+        background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.85) 50%, transparent 70%) 0 0 / 250% 100%;
+        animation: unlock-shine 0.9s ease 0.8s both;
+      }
+
+      /* Cards deal in one after another when the map opens. */
+      #map.entering .map-header { animation: header-in 0.5s var(--spring) both; }
+      #map.entering .map-level { animation: card-in 0.45s var(--spring) both; animation-delay: calc(var(--i, 0) * 40ms); }
+      #map.entering .map-level.next { animation: card-in 0.45s var(--spring) both, breathe 1.8s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 40ms), 0.9s; }
+      #map.entering .map-level.just-completed { animation: card-in 0.45s var(--spring) both, pop 0.5s var(--spring) both; animation-delay: calc(var(--i, 0) * 40ms), 0.45s; }
+
+      #map:not(.shown) .map-play { pointer-events: none; }
+      .map-play {
+        position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 6;
+        padding: 15px 60px; background: var(--green); font: 800 24px/1 system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase;
+        box-shadow: 0 6px 0 var(--green-dark), 0 12px 22px rgba(0, 0, 0, 0.25);
+        border: 0; border-radius: 999px; cursor: pointer; color: #fff;
+        transition: transform 0.18s var(--spring), box-shadow 0.18s ease, filter 0.18s ease;
+        animation: nudge-x 1.8s ease-in-out infinite;
+      }
+      @media (hover: hover) { .map-play:not(:disabled):hover { transform: translateX(-50%) translateY(-3px) scale(1.04); box-shadow: 0 9px 0 var(--green-dark), 0 16px 26px rgba(0, 0, 0, 0.26); filter: brightness(1.07); animation: none; } }
+      .map-play:not(:disabled):active { transform: translateX(-50%) translateY(4px) scale(0.97); box-shadow: 0 2px 0 var(--green-dark); animation: none; }
+      .map-play:disabled { background: #9aa8a0; box-shadow: 0 6px 0 #7b8881; cursor: default; animation: none; }
+
+      @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
+      @keyframes check { 0% { transform: scale(0) rotate(-40deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+      @keyframes card-in { 0% { opacity: 0; transform: translateY(16px) scale(0.88); } 100% { opacity: 1; transform: none; } }
+      @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 3px rgba(255, 154, 46, 0.45), 0 3px 8px rgba(0, 0, 0, 0.18); } 50% { box-shadow: 0 0 0 7px rgba(255, 154, 46, 0.2), 0 3px 8px rgba(0, 0, 0, 0.18); } }
+      @keyframes shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-7px) rotate(-2deg); } 40% { transform: translateX(6px) rotate(2deg); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+      @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -120% 0; } }
+      @keyframes unlock-shine { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+      @keyframes nudge { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.06); } }
+      @keyframes nudge-x { 0%, 100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.04); } }
+      @keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-14deg); } 75% { transform: rotate(14deg); } }
+      @keyframes bulb { 0% { transform: scale(1); } 40% { transform: scale(1.5); filter: drop-shadow(0 0 6px #fff59d); } 100% { transform: scale(1); } }
+      @keyframes header-in { from { opacity: 0; transform: translateY(-18px) scale(0.94); } to { opacity: 1; transform: none; } }
+
+      /* Players who ask their system for less motion get no transitions or animations. */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { transition: none !important; animation: none !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <button id="mute" class="game-button" type="button" aria-pressed="false"><img alt="" draggable="false" /></button>
+    <button id="home" class="game-button" type="button"><img alt="" draggable="false" /><span class="text"></span></button>
+    <div id="hud">
+      <span id="level-name"><img alt="" hidden /><span class="text"></span></span>
+      <span id="level-count"></span>
+    </div>
+    <button id="hint" class="game-button" type="button"><img class="bulb" alt="" draggable="false" /><span class="text"></span></button>
+    <button id="next" class="game-button" type="button"></button>
+    <div id="banner"><img alt="" hidden /><div class="label"></div></div>
+    <div id="map"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
