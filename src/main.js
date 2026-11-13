@@ -112,6 +112,12 @@ async function start() {
   const hintButton = document.getElementById('hint');
   hintButton.querySelector('.text').textContent = CONFIG.ui.hintLabel;
   hintButton.querySelector('.bulb').src = ICONS.hint;
+  // Browser-tab icon. Set here rather than in index.html so the single-file build embeds it.
+  const tabIcon = document.createElement('link');
+  tabIcon.rel = 'icon';
+  tabIcon.type = 'image/png';
+  tabIcon.href = ICONS.favicon;
+  document.head.append(tabIcon);
   hintButton.title = CONFIG.ui.hintTitle;
   const banner = document.getElementById('banner');
   const bannerIcon = banner.querySelector('img');

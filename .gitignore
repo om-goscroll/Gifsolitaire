@@ -1,6 +1,7 @@
 # Dependencies and build output (rebuilt with npm install / npm run build)
 node_modules/
 dist/
+dist-inline/
 
 # Raw source GIFs: the game uses its own copies in assets/gifs/
 /GIFs/

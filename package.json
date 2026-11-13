@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:inline": "vite build --mode inline",
     "preview": "vite preview",
     "test": "vitest run"
   },
@@ -14,6 +15,7 @@
   },
   "devDependencies": {
     "vite": "^5.4.0",
+    "vite-plugin-singlefile": "2.0.3",
     "vitest": "^2.1.0"
   }
 }

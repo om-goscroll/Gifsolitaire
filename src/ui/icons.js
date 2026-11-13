@@ -16,6 +16,7 @@ import hintArrow from '../../assets/icons/hint-arrow.png';
 import rotate from '../../assets/icons/rotate.png';
 import rotateCursor from '../../assets/icons/rotate-cursor.png';
 import missing from '../../assets/icons/missing.png';
+import favicon from '../../assets/icons/favicon.png';
 
 export const ICONS = Object.freeze({
   /** A level the player cannot play yet. */
@@ -43,6 +44,8 @@ export const ICONS = Object.freeze({
   rotateCursor,
   /** Shown when a level's picture cannot be loaded. */
   missing,
+  /** The browser-tab icon (set from the script so the inline build embeds it too). */
+  favicon,
 });
 
 /**
